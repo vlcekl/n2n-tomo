@@ -58,7 +58,7 @@ class UNet(nn.Module):
             nn.Conv2d(32, 16, 3, stride=1, padding=1),
             nn.LeakyReLU(0.1),
             nn.Conv2d(16, out_channels, 3, stride=1, padding=1),
-            nn.ReLU(inplace=True))
+            nn.Sigmoid())
 
         # Initialize weights
         self._init_weights()

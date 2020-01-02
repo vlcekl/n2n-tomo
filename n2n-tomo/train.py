@@ -90,7 +90,7 @@ if __name__ == '__main__':
     print('Lens:', len(select_train), len(select_valid), len(select_test))
 
     # Train/valid datasets
-    train_loader = load_dataset(params, select=select_train, shuffle=True)
+    train_loader = load_dataset(params, select=select_train, shuffle=False)
     valid_loader = load_dataset(params, select=select_valid, shuffle=False)
 
     # Initialize model and train

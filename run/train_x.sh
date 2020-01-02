@@ -14,4 +14,5 @@ python ./n2n-tomo/train.py \
   --cuda \
   --plot-stats \
   --ckpt-save-path ./ckpts \
-  --report-interval 16 
+  --ckpt-overwrite \
+  --report-interval 16

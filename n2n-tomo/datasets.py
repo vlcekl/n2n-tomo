@@ -7,38 +7,12 @@ import netCDF4
 from torch.utils.data import Dataset, DataLoader, Sampler
 from torchvision import transforms
 
-class RandomPairSampler(Sampler):
-    r"""Takes random pairs of related (subsequent) samples.
-
-    Useful for denoising and removing artifacts if different noisy instances of the
-    same ground truth are available.
-
-    Arguments
-    ----------
-        data_source (Dataset): dataset to sample from
-    """
-
-    def __init__(self, data_source):
-        self.num_samples = len(data_source)
-        self.pair_id = 1
-        
-    def __iter__(self):
-        if self.pair_id % 2 == 1:
-            self.pair_id = iter(torch.randperm(self.num_samples).tolist()) // 2
-            return self.pair_id
-        else:
-            self.pair_id += 1
-            return self.pair_id
-
-    def __len__(self):
-        return self.num_samples
-
 
 class TomoDataset(Dataset):
     """Make datasets from pairs of reconstructions of the same system"""
 
     #@profile
-    def __init__(self, root_dir, axis=0, crop_size=None, n_crops=1, select=None, seed=None):
+    def __init__(self, root_dir, axis=0, crop_size=None, n_crops=1, select=None, render=None, seed=None):
         """Initializes dataset"""
 
         super(TomoDataset, self).__init__()
@@ -51,6 +25,7 @@ class TomoDataset(Dataset):
         self.n_crops = n_crops
         self.seed = seed
         self.imgs = [[], []]
+        self.render = render
 
         files_A = glob(os.path.join(root_dir, '*_A.nc'))
         files_B = glob(os.path.join(root_dir, '*_B.nc'))
@@ -79,9 +54,14 @@ class TomoDataset(Dataset):
 
                 print('shape:', vol_select.shape)
                 if crop_size is not None:
-                    vol_select = self._random_crop(vol_select)
+                    if render:
+`                       vol_select = self._covered_crop(vol_select)
+                    else:
+`                       vol_select = self._random_crop(vol_select)
                 vol_select = vol_select.astype(np.float32) 
-                vol_select /= 2**15  # normalize between +1 and -1
+                #vol_select /= 2**15  # normalize between +1 and -1
+                vol_select += 2**15  # normalize between 0 and 1
+                vol_select /= 2**16
 
                 print('max-min-shape:', np.max(vol_select), np.min(vol_select), vol_select.shape)
     
@@ -94,6 +74,32 @@ class TomoDataset(Dataset):
 
         print(self.imgs[0].shape, self.imgs[1].shape)
 
+    def _covered_crop(self, imgs, seed=None):
+        """Performs square crop of fixed size covering the image..
+        """
+
+        if self.crop_choice is None:
+            n, w, h = imgs.shape
+            assert w >= self.crop_size and h >= self.crop_size, \
+                f'Error: Crop size: {self.crop_size}, Image size: ({w}, {h})'
+
+            nh = (h - self.crop_size)//self.n_crops
+            nw = (w - self.crop_size)//self.n_crops
+            total_crops = nh*nw
+
+            self.crop_choice = []
+            for i in range(nh):
+                for j in range(nw):
+                    ih = i*nh
+                    jw = j*nw
+                    self.crop_choice.append((ih, jw))
+
+        cropped_imgs = []
+        for k, img in enumerate(imgs):
+            for i, j in self.crop_choice[k*total_crops: (k+1)*total_crops]:
+                cropped_imgs.append(img[i:i+self.crop_size, j:j+self.crop_size])
+
+        return np.array(cropped_imgs)
 
     def _random_crop(self, imgs, seed=None):
         """Performs random square crop of fixed size.
@@ -135,6 +141,34 @@ class TomoDataset(Dataset):
         return len(self.imgs[0]) + len(self.imgs[1])
 
 
+class RandomPairSampler(Sampler):
+    r"""Takes random pairs of related (subsequent) samples.
+
+    Useful for denoising and removing artifacts if different noisy instances of the
+    same ground truth are available.
+
+    Arguments
+    ----------
+        data_source (Dataset): dataset to sample from
+    """
+
+    def __init__(self, data_source):
+        self.num_samples = len(data_source)
+        assert self.num_samples % 2 == 0, f"Even number of samples is required for RandomPairSampler"
+
+        perm = torch.randperm(self.num_samples).tolist()
+        perm = [i for i in perm if i % 2 == 0]
+        self.perm = []
+        for i in perm:
+            self.perm.extend([i, i+1])
+        
+    def __iter__(self):
+        return iter(self.perm)
+
+    def __len__(self):
+        return self.num_samples
+
+
 def load_dataset(params, select=None, shuffle=False):
     """Loads dataset and returns corresponding data loader."""
 
@@ -144,8 +178,9 @@ def load_dataset(params, select=None, shuffle=False):
     n_crops = params.n_crops
     batch_size = params.batch_size
     seed = params.seed
+    render = params.render
 
-    dataset = TomoDataset(root_dir, axis=axis, crop_size=crop_size, n_crops=n_crops, select=select, seed=seed)
+    dataset = TomoDataset(root_dir, axis=axis, crop_size=crop_size, n_crops=n_crops, select=select, seed=seed, render=True)
     sampler = RandomPairSampler(dataset)
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, sampler=sampler)
 

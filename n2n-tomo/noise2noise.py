@@ -145,7 +145,7 @@ class Noise2Noise(object):
 
         # Create directory for denoised images
         denoised_dir = os.path.dirname(self.p.data)
-        save_path = os.path.join(denoised_dir, 'denoised')
+        save_path = os.path.join(denoised_dir, 'output')
         if not os.path.isdir(save_path):
             os.mkdir(save_path)
 

@@ -58,7 +58,11 @@ class UNet(nn.Module):
             nn.Conv2d(32, 16, 3, stride=1, padding=1),
             nn.LeakyReLU(0.1),
             nn.Conv2d(16, out_channels, 3, stride=1, padding=1),
-            nn.ReLU(inplace=True))
+            #nn.ReLU(inplace=True))
+            #nn.LeakyReLU(0.1))
+            #nn.Tanh())
+            #nn.Linear())
+            nn.Sigmoid())
 
         # Initialize weights
         self._init_weights()
@@ -82,14 +86,11 @@ class UNet(nn.Module):
         pool3 = self._block2(pool2)
         pool4 = self._block2(pool3)
         pool5 = self._block2(pool4)
-        pool6 = self._block2(pool5)
 
         # Decoder
-        upsample6 = self._block3(pool6)
-        concat6 = torch.cat((upsample6, pool5), dim=1)
-        upsample5 = self._block4(concat6)
+        upsample5 = self._block3(pool5)
         concat5 = torch.cat((upsample5, pool4), dim=1)
-        upsample4 = self._block5(concat5)
+        upsample4 = self._block4(concat5)
         concat4 = torch.cat((upsample4, pool3), dim=1)
         upsample3 = self._block5(concat4)
         concat3 = torch.cat((upsample3, pool2), dim=1)
