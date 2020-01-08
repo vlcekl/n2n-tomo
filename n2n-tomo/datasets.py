@@ -4,7 +4,7 @@ from glob import glob
 import numpy as np
 import torch
 import netCDF4
-from torch.utils.data import Dataset, DataLoader, Sampler
+from torch.utils.data import Dataset, DataLoader, Sampler, SequentialSampler
 from torchvision import transforms
 
 
@@ -12,7 +12,8 @@ class TomoDataset(Dataset):
     """Make datasets from pairs of reconstructions of the same system"""
 
     #@profile
-    def __init__(self, root_dir, axis=0, crop_size=None, n_crops=1, select=None, render=None, seed=None):
+    def __init__(self, root_dir, axis=0, crop_size=None, n_crops=1,
+            n_height=0, n_width=0, select=None, render=False, seed=None):
         """Initializes dataset"""
 
         super(TomoDataset, self).__init__()
@@ -23,6 +24,8 @@ class TomoDataset(Dataset):
         self.root_dir = root_dir
         self.crop_size = crop_size
         self.n_crops = n_crops
+        self.n_height = n_height
+        self.n_width = n_width
         self.seed = seed
         self.imgs = [[], []]
         self.render = render
@@ -55,9 +58,10 @@ class TomoDataset(Dataset):
                 print('shape:', vol_select.shape)
                 if crop_size is not None:
                     if render:
-`                       vol_select = self._covered_crop(vol_select)
+                        vol_select = self._covered_crop(vol_select)
                     else:
-`                       vol_select = self._random_crop(vol_select)
+                        vol_select = self._random_crop(vol_select)
+
                 vol_select = vol_select.astype(np.float32) 
                 #vol_select /= 2**15  # normalize between +1 and -1
                 vol_select += 2**15  # normalize between 0 and 1
@@ -83,23 +87,40 @@ class TomoDataset(Dataset):
             assert w >= self.crop_size and h >= self.crop_size, \
                 f'Error: Crop size: {self.crop_size}, Image size: ({w}, {h})'
 
-            nh = (h - self.crop_size)//self.n_crops
-            nw = (w - self.crop_size)//self.n_crops
-            total_crops = nh*nw
+            n_height = self.n_height
+            n_width = self.n_width
+
+            self.nh = (h - self.crop_size)//(n_height - 1)
+            self.nw = (w - self.crop_size)//(n_width - 1)
 
             self.crop_choice = []
-            for i in range(nh):
-                for j in range(nw):
-                    ih = i*nh
-                    jw = j*nw
+            for i in range(n_height):
+                for j in range(n_width):
+                    ih = i*self.nh
+                    jw = j*self.nw
                     self.crop_choice.append((ih, jw))
 
+        total_crops = self.n_height*self.n_width
+        #print('whtot', self.n_height, self.n_width, total_crops)
         cropped_imgs = []
+        cnt = 0
         for k, img in enumerate(imgs):
-            for i, j in self.crop_choice[k*total_crops: (k+1)*total_crops]:
-                cropped_imgs.append(img[i:i+self.crop_size, j:j+self.crop_size])
+            #print('img', k)
+            for ih, jw in self.crop_choice:
+                cropped_imgs.append(img[ih:ih+self.crop_size, jw:jw+self.crop_size])
+                #print('crop', ih, jw)
+                cnt += 1
+
+        print("total images:", cnt, self.nh, self.nw)
+        coords_dir = os.path.dirname(self.root_dir)
+        save_path = os.path.join(coords_dir, 'compose')
+        if not os.path.isdir(save_path):
+            os.mkdir(save_path)
+        fname = os.path.join(save_path, 'coords')
+        np.save(fname, np.array(self.crop_choice))
 
         return np.array(cropped_imgs)
+
 
     def _random_crop(self, imgs, seed=None):
         """Performs random square crop of fixed size.
@@ -169,19 +190,27 @@ class RandomPairSampler(Sampler):
         return self.num_samples
 
 
-def load_dataset(params, select=None, shuffle=False):
+def load_dataset(params, select=None, shuffle=False, sample_type='random_pairs'):
     """Loads dataset and returns corresponding data loader."""
 
     root_dir = params.data
     axis = params.axis
     crop_size = params.crop_size
     n_crops = params.n_crops
+    n_width = params.n_width
+    n_height = params.n_height
     batch_size = params.batch_size
     seed = params.seed
     render = params.render
 
-    dataset = TomoDataset(root_dir, axis=axis, crop_size=crop_size, n_crops=n_crops, select=select, seed=seed, render=True)
-    sampler = RandomPairSampler(dataset)
+    dataset = TomoDataset(root_dir, axis=axis, crop_size=crop_size,
+            n_crops=n_crops, n_width=n_width, n_height=n_height,
+            select=select, seed=seed, render=True)
+    if sample_type == 'random_pairs':
+        sampler = RandomPairSampler(dataset)
+    elif sample_type == 'sequential':
+        sampler = SequentialSampler(dataset)
+
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, sampler=sampler)
 
     return data_loader

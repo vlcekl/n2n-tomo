@@ -23,10 +23,9 @@ def parse_args():
     parser.add_argument('--load-ckpt', help='load model checkpoint')
     parser.add_argument('-x', '--axis', help='Axis along which slices will be taken', type=int)
     parser.add_argument('-cs', '--crop-size', help='Size of the cropped image', type=int)
-    parser.add_argument('-nc', '--n-crops', help='Number of crops from a single image', type=int)
-    parser.add_argument('-tf', '--train-fraction', help='Fraction of the train data', type=float)
-    parser.add_argument('-vf', '--valid-fraction', help='Fraction of the validation data out of train data', type=float)
-    parser.add_argument('-tn', '--train-number', help='Number of train samples', type=int)
+    parser.add_argument('-nc', '--n-crops', help='Number of crops from a single image', default=0, type=int)
+    parser.add_argument('-nh', '--n-height', help='Number of crops from a single image', default=0, type=int)
+    parser.add_argument('-nw', '--n-width', help='Number of crops from a single image', default=0, type=int)
     parser.add_argument('-b', '--batch-size', help='minibatch size', default=4, type=int)
     parser.add_argument('-s', '--seed', help='fix random seed', type=int)
     parser.add_argument('--cuda', help='use cuda', action='store_true')
@@ -47,9 +46,11 @@ if __name__ == '__main__':
     selects = np.load(os.path.join(params.data, 'data_split.npz'))
     params.axis = selects['axis']
     select_test = selects['test']
+    select_compose = select_test[:1]
+
 
     # Initialize model and test
     n2n = Noise2Noise(params, trainable=False)
-    test_loader = load_dataset(params, select=select_test, shuffle=True)
+    test_loader = load_dataset(params, select=select_compose, shuffle=True, sample_type='sequential')
     n2n.load_model(params.load_ckpt)
     n2n.compose(test_loader, show=params.show_output)

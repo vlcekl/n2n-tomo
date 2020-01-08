@@ -189,6 +189,68 @@ class Noise2Noise(object):
         np.savez(fname, *clean_imgs)
 
 
+    def compose(self, test_loader, show):
+        """Evaluates denoiser on test set."""
+
+        self.model.train(False)
+
+        source_imgs = []
+        target_imgs = []
+        denoised_imgs = []
+        clean_imgs = []
+
+        # Create directory for denoised images
+        denoised_dir = os.path.dirname(self.p.data)
+        save_path = os.path.join(denoised_dir, 'compose')
+        if not os.path.isdir(save_path):
+            os.mkdir(save_path)
+
+        for batch_idx, (source, target) in enumerate(test_loader):
+            # Only do first <show> images
+            #if show == 0 or batch_idx >= show:
+            #    break
+
+            source_imgs.append(source)
+            target_imgs.append(target)
+
+            if self.use_cuda:
+                source = source.cuda()
+
+            # Denoise 1
+            denoised_img = self.model(source).detach()
+            denoised_imgs.append(denoised_img)
+
+            if self.use_cuda:
+                target = target.cuda()
+
+            # Denoise 2
+            clean_img = self.model(target).detach()
+            clean_imgs.append(clean_img)
+
+        # Squeeze tensors
+        #source_imgs = [t.squeeze() for t in source_imgs]
+        #target_imgs = [t.squeeze() for t in target_imgs]
+        denoised_imgs = [t.squeeze().cpu() for t in denoised_imgs]
+        clean_imgs = [t.squeeze().cpu() for t in clean_imgs]
+
+        compose_imgs = []
+        for imgA, imgB in zip(denoised_imgs, clean_imgs):
+            compose_imgs.append(0.5*(imgA + imgB))
+
+        print('image num:', len(compose_imgs))
+
+        # Save images
+        print('Saving images to: {}'.format(save_path))
+        #fname = os.path.join(save_path, 'source.npz')
+        #np.savez(fname, *source_imgs)
+        #fname = os.path.join(save_path, 'target.npz')
+        #np.savez(fname, *target_imgs)
+        fname = os.path.join(save_path, 'compose.npz')
+        np.savez(fname, *compose_imgs)
+        #fname = os.path.join(save_path, 'denoise_B.npz')
+        #np.savez(fname, *clean_imgs)
+
+
     def eval(self, valid_loader):
         """Evaluates denoiser on validation set."""
 
